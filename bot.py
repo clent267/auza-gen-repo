@@ -1,4 +1,3 @@
-import json
 import os
 import aiohttp
 import discord
@@ -6,25 +5,37 @@ from discord.ext import commands
 from utils import find_nitro, is_giveaway
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-with open("config.json") as f:
-    config = json.load(f)
+TARGET_GUILD_ID = int(os.getenv("TARGET_GUILD_ID"))
+TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-async def send_webhook(title, description):
-    if not config["webhook_url"]:
+async def send_channel_message(title, description):
+    guild = bot.get_guild(TARGET_GUILD_ID)
+    if not guild:
         return
-    payload = {"embeds": [{"title": title, "description": description, "color": 0x5865F2}]}
-    async with aiohttp.ClientSession() as session:
-        await session.post(config["webhook_url"], json=payload)
+
+    channel = guild.get_channel(TARGET_CHANNEL_ID)
+    if not channel:
+        return
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=0x5865F2
+    )
+
+    await channel.send(embed=embed)
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user}")
+    print(f"[READY] Logged in as {bot.user}")
+    print(f"[INFO] Target Guild: {TARGET_GUILD_ID}")
+    print(f"[INFO] Target Channel: {TARGET_CHANNEL_ID}")
 
 @bot.event
 async def on_message(message):
@@ -33,12 +44,23 @@ async def on_message(message):
 
     content = message.content
 
+    # Nitro detection
     code = find_nitro(content)
-    if code and config["log_nitro"]:
-        await send_webhook("Nitro Detected", f"Code: `{code}`")
+    if code:
+        await send_channel_message(
+            "🎁 Nitro Detected",
+            f"Code: `{code}`\n"
+            f"From: {message.author}\n"
+            f"Channel: {message.channel.mention}"
+        )
 
-    if is_giveaway(content) and config["log_giveaways"]:
-        await send_webhook("Giveaway Detected", content[:300])
+    # Giveaway detection
+    if is_giveaway(content):
+        await send_channel_message(
+            "🎉 Giveaway Detected",
+            f"{content[:300]}\n\n"
+            f"Channel: {message.channel.mention}"
+        )
 
     await bot.process_commands(message)
 
